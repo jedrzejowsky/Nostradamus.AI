@@ -26,15 +26,18 @@ const WeatherDashboard = () => {
     const [selectedDay, setSelectedDay] = useState(null);
     const [carouselOffset, setCarouselOffset] = useState(0); // Offset in weeks (7 days)
     const [modelStats, setModelStats] = useState(null);
+    const [historyComparison, setHistoryComparison] = useState({ yearAgo: null, decadeAgo: null });
 
     const fetchData = async () => {
         setLoading(true);
         setError(null);
         setModelStats(null);
+        setHistoryComparison({ yearAgo: null, decadeAgo: null });
         try {
-            // Fetch 7 days history + 7 days forecast (reduced range per user request)
-            const startDate = format(subDays(new Date(), 7), 'yyyy-MM-dd');
-            const endDate = format(subDays(new Date(), 1), 'yyyy-MM-dd'); // History until yesterday
+            // Fetch 7 days history + 7 days forecast
+            const now = new Date();
+            const startDate = format(subDays(now, 7), 'yyyy-MM-dd');
+            const endDate = format(subDays(now, 1), 'yyyy-MM-dd');
 
             const histRes = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${startDate}&end_date=${endDate}`);
             if (!histRes.ok) throw new Error("Failed to fetch history");
@@ -44,27 +47,51 @@ const WeatherDashboard = () => {
             if (!foreRes.ok) throw new Error("Failed to fetch forecast");
             const forePayload = await foreRes.json();
 
-            // Merge Hourly Data for Chart
+            // Merge & Set Data
             const mergedHourly = mergeHourlyData(histPayload.hourly, forePayload.hourly, []);
             setData(mergedHourly);
 
-            // Merge Daily Data for Tokens
-            // History Daily + Forecast Daily
-            // We need to deduplicate based on time. Forecast usually starts from Today. History ends Yesterday.
+            // Daily Data Processing
             const rawDaily = [...(histPayload.daily || []), ...(forePayload.daily || [])];
             const dailyMap = new Map();
             rawDaily.forEach(d => {
                 const t = d.time.split('T')[0];
                 if (!dailyMap.has(t)) dailyMap.set(t, d);
-                else dailyMap.set(t, { ...dailyMap.get(t), ...d }); // Overwrite helper
+                else dailyMap.set(t, { ...dailyMap.get(t), ...d });
             });
             const sortedDaily = Array.from(dailyMap.values()).sort((a, b) => new Date(a.time) - new Date(b.time));
             setDailyData(sortedDaily);
 
             // Select today
-            const today = new Date();
-            const todayData = sortedDaily.find(d => isSameDay(new Date(d.time), today));
+            const todayData = sortedDaily.find(d => isSameDay(new Date(d.time), now));
             if (todayData) setSelectedDay(todayData);
+
+            // Fetch Historical Comparisons (Async, don't block main UI excessively, but here we await)
+            // 1 Year Ago
+            const date1y = subDays(now, 365);
+            const date10y = subDays(now, 365 * 10);
+
+            const fetchPointHistory = async (date) => {
+                const dStr = format(date, 'yyyy-MM-dd');
+                try {
+                    const res = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${dStr}&end_date=${dStr}`);
+                    const json = await res.json();
+                    if (json.hourly && json.hourly.length > 0) {
+                        // Find same hour
+                        const hour = now.getHours();
+                        const record = json.hourly.find(r => new Date(r.time).getHours() === hour);
+                        return record ? record.temperature_2m : null;
+                    }
+                } catch (e) { console.error(e); }
+                return null;
+            };
+
+            const [temp1y, temp10y] = await Promise.all([
+                fetchPointHistory(date1y),
+                fetchPointHistory(date10y)
+            ]);
+
+            setHistoryComparison({ yearAgo: temp1y, decadeAgo: temp10y });
 
         } catch (err) {
             console.error(err);
@@ -232,12 +259,26 @@ const WeatherDashboard = () => {
                             </div>
                             <div className="flex flex-col items-center">
                                 <Activity size={20} className="mb-1" />
-                                <span className="text-sm">{currentMetric?.precipitation_probability || 0}%</span>
+                                <span className="text-sm">
+                                    {currentMetric?.precipitation !== undefined ? currentMetric.precipitation : (currentMetric?.precipitation_probability || 0)}
+                                    {currentMetric?.precipitation !== undefined ? ' mm' : '%'}
+                                </span>
                                 <span className="text-[10px] opacity-70">Precip</span>
                             </div>
                         </div>
 
-                        <div className="mt-8">
+                        {/* Historical Context */}
+                        <div className="mt-6 border-t border-white/10 pt-4 w-full">
+                            <div className="text-[10px] uppercase tracking-widest text-indigo-300 font-semibold mb-2 text-center">Did You Know?</div>
+                            <div className="flex justify-center px-4 text-sm text-slate-300">
+                                <div className="flex flex-col items-center">
+                                    <span className="opacity-60 text-xs">1 Year Ago Today</span>
+                                    <span className="font-mono text-white text-lg">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
                             <button
                                 onClick={handlePredict}
                                 disabled={predicting}
@@ -268,31 +309,33 @@ const WeatherDashboard = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-3 items-center">
+                    <div className="relative px-10 py-2">
                         {/* Left Arrow */}
                         <button
                             onClick={() => setCarouselOffset(prev => prev - 1)}
-                            className="h-full flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all group"
+                            className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
                         >
-                            <ChevronLeft size={24} className="text-slate-500 group-hover:text-white transition-colors" />
+                            <ChevronLeft size={24} />
                         </button>
 
-                        {/* Days (Show 5) */}
-                        {visibleDays.slice(1, 6).map((d, i) => (
-                            <DayTile
-                                key={i}
-                                day={d}
-                                onClick={() => setSelectedDay(d)}
-                                isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
-                            />
-                        ))}
+                        {/* Days Grid */}
+                        <div className="grid grid-cols-5 gap-3">
+                            {visibleDays.slice(0, 5).map((d, i) => (
+                                <DayTile
+                                    key={i}
+                                    day={d}
+                                    onClick={() => setSelectedDay(d)}
+                                    isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
+                                />
+                            ))}
+                        </div>
 
                         {/* Right Arrow */}
                         <button
                             onClick={() => setCarouselOffset(prev => prev + 1)}
-                            className="h-full flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all group"
+                            className="absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
                         >
-                            <ChevronRight size={24} className="text-slate-500 group-hover:text-white transition-colors" />
+                            <ChevronRight size={24} />
                         </button>
                     </div>
 
