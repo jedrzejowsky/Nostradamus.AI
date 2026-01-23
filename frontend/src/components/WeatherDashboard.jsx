@@ -309,31 +309,32 @@ const WeatherDashboard = () => {
                         </div>
                     </div>
 
-                    <div className="relative px-10 py-2">
-                        {/* Left Arrow */}
+                    <div className="relative md:px-12 px-0 py-2">
+                        {/* Left Arrow (Desktop) */}
                         <button
                             onClick={() => setCarouselOffset(prev => prev - 1)}
-                            className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
+                            className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
                         >
                             <ChevronLeft size={24} />
                         </button>
 
-                        {/* Days Grid */}
-                        <div className="grid grid-cols-5 gap-3">
+                        {/* Days Grid/Scroll */}
+                        <div className="flex md:grid md:grid-cols-5 gap-3 overflow-x-auto snap-x no-scrollbar px-4 md:px-0 pb-2 md:pb-0">
                             {visibleDays.slice(0, 5).map((d, i) => (
-                                <DayTile
-                                    key={i}
-                                    day={d}
-                                    onClick={() => setSelectedDay(d)}
-                                    isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
-                                />
+                                <div key={i} className="min-w-[100px] md:min-w-0 snap-center">
+                                    <DayTile
+                                        day={d}
+                                        onClick={() => setSelectedDay(d)}
+                                        isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
+                                    />
+                                </div>
                             ))}
                         </div>
 
-                        {/* Right Arrow */}
+                        {/* Right Arrow (Desktop) */}
                         <button
                             onClick={() => setCarouselOffset(prev => prev + 1)}
-                            className="absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
+                            className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
                         >
                             <ChevronRight size={24} />
                         </button>
