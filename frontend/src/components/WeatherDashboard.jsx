@@ -3,6 +3,7 @@ import WeatherChart from './WeatherChart';
 import LocationSearch from './LocationSearch';
 import WeatherMap from './WeatherMap';
 import DayTile from './DayTile';
+import ModelInsights from './ModelInsights';
 import { Thermometer, BrainCircuit, Activity, RefreshCw, MapPin, Droplets, Wind, Cloud, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, subDays, addDays, isSameDay, startOfDay } from 'date-fns';
 import { clsx } from 'clsx';
@@ -81,12 +82,25 @@ const WeatherDashboard = () => {
             const payload = await res.json();
 
             if (payload.prediction) {
-                // prediction is hourly
-                const newData = mergeHourlyData(
-                    data.filter(d => d.history !== null),
-                    data.filter(d => d.forecast !== null),
-                    payload.prediction
-                );
+                // Create a map using time values for robust matching
+                const predMap = new Map();
+                payload.prediction.forEach(p => {
+                    // Normalize time to handle potential differences (e.g. seconds)
+                    const timeKey = new Date(p.time).toISOString().slice(0, 16); // match 'YYYY-MM-DDTHH:mm'
+                    predMap.set(timeKey, p);
+                });
+
+                const newData = data.map(d => {
+                    const timeKey = new Date(d.time).toISOString().slice(0, 16);
+                    const pred = predMap.get(timeKey);
+                    return {
+                        ...d,
+                        prediction: pred ? pred.predicted_temperature_2m : null,
+                        prediction_wind: pred ? pred.predicted_wind_speed_10m : null,
+                        prediction_hum: pred ? pred.predicted_relative_humidity_2m : null
+                    };
+                });
+
                 setData(newData);
 
                 if (payload.model_performance) {
@@ -94,6 +108,7 @@ const WeatherDashboard = () => {
                 }
             }
         } catch (err) {
+            console.error(err);
             setError("AI Prediction failed.");
         } finally {
             setPredicting(false);
@@ -290,18 +305,20 @@ const WeatherDashboard = () => {
                                 <div>Min Temp: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_min)}°</span></div>
                                 <div>Precip Sum: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_sum} mm</span></div>
                                 <div>Precip Prob: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_probability_max || selectedDay.precipitation_hours || '- '}%</span></div>
-                                <div>Code: <span className="text-white font-mono block text-lg">{selectedDay.weather_code}</span></div>
                             </div>
                         </div>
                     )}
                 </div>
 
                 {/* Chart Section */}
-                <div className="flex-1 min-h-[400px] flex flex-col">
+                <div className="flex-1 min-h-[400px] flex flex-col gap-6">
                     {loading ? (
                         <div className="h-full flex items-center justify-center text-slate-500">Loading charts...</div>
                     ) : (
-                        <WeatherChart data={data} modelStats={modelStats} />
+                        <>
+                            <WeatherChart data={data} modelStats={modelStats} />
+                            {modelStats && <ModelInsights stats={modelStats} />}
+                        </>
                     )}
                 </div>
 

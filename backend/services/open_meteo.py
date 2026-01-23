@@ -80,6 +80,39 @@ class OpenMeteoClient:
             print(f"Error fetching forecast data: {e}")
             return None
 
+    def get_recent_data(self, latitude: float, longitude: float, days_past: int = 3):
+        """
+        Fetches very recent data (past days) using the Forecast API.
+        This often contains more up-to-date observations/estimations than the Archive API
+        for the immediate past (last 24-48h).
+        """
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": ["temperature_2m", "wind_speed_10m", "relative_humidity_2m"],
+            "past_days": days_past,
+            "forecast_days": 1, # Minimal forecast, we just want past
+            "timezone": "auto"
+        }
+
+        try:
+            response = requests.get(self.FORECAST_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            hourly = data.get("hourly", {})
+            df_hourly = pd.DataFrame(hourly)
+            df_hourly["time"] = pd.to_datetime(df_hourly["time"])
+            
+            # Filter to only keep past data (up to now)
+            now = pd.Timestamp.now()
+            df_hourly = df_hourly[df_hourly["time"] <= now]
+            
+            return df_hourly
+        except Exception as e:
+            print(f"Error fetching recent data: {e}")
+            return None
+
 # Example usage for testing
 if __name__ == "__main__":
     client = OpenMeteoClient()
