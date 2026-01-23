@@ -1,38 +1,70 @@
 import React, { useEffect, useState } from 'react';
 import WeatherChart from './WeatherChart';
-import { CloudRain, Wind, Thermometer, BrainCircuit, Activity, RefreshCw } from 'lucide-react';
+import LocationSearch from './LocationSearch';
+import WeatherMap from './WeatherMap';
+import DayTile from './DayTile';
+import { Thermometer, BrainCircuit, Activity, RefreshCw, MapPin, Droplets, Wind, Cloud, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format, subDays, addDays, isSameDay, startOfDay } from 'date-fns';
 import { clsx } from 'clsx';
-import { format, subDays, addDays } from 'date-fns';
 
+// Update base URL if needed or use relative proxy
 const API_BASE = 'http://localhost:8000/api/weather';
 
 const WeatherDashboard = () => {
-    const [data, setData] = useState([]);
+    const [data, setData] = useState([]); // Hourly data for chart
+    const [dailyData, setDailyData] = useState([]); // Daily data from API
     const [loading, setLoading] = useState(true);
     const [predicting, setPredicting] = useState(false);
     const [error, setError] = useState(null);
+    const [location, setLocation] = useState({
+        name: "Warsaw",
+        lat: 52.2297,
+        lon: 21.0122
+    });
 
-    // Default: Warsaw
-    const lat = 52.2297;
-    const lon = 21.0122;
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [carouselOffset, setCarouselOffset] = useState(0); // Offset in weeks (7 days)
+    const [modelStats, setModelStats] = useState(null);
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
+        setModelStats(null);
         try {
-            // 1. Get History (Last 3 days)
-            const startDate = format(subDays(new Date(), 3), 'yyyy-MM-dd');
-            const endDate = format(new Date(), 'yyyy-MM-dd'); // Today
+            // Fetch 7 days history + 7 days forecast (reduced range per user request)
+            const startDate = format(subDays(new Date(), 7), 'yyyy-MM-dd');
+            const endDate = format(subDays(new Date(), 1), 'yyyy-MM-dd'); // History until yesterday
 
-            const histRes = await fetch(`${API_BASE}/history?lat=${lat}&lon=${lon}&start_date=${startDate}&end_date=${endDate}`);
-            const histData = await histRes.json();
+            const histRes = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${startDate}&end_date=${endDate}`);
+            if (!histRes.ok) throw new Error("Failed to fetch history");
+            const histPayload = await histRes.json();
 
-            // 2. Get Forecast (Next 7 days)
-            const foreRes = await fetch(`${API_BASE}/forecast?lat=${lat}&lon=${lon}&days=7`);
-            const foreData = await foreRes.json();
+            const foreRes = await fetch(`${API_BASE}/forecast?lat=${location.lat}&lon=${location.lon}&days=7`);
+            if (!foreRes.ok) throw new Error("Failed to fetch forecast");
+            const forePayload = await foreRes.json();
 
-            // Merge Data
-            const merged = mergeData(histData, foreData, []);
-            setData(merged);
+            // Merge Hourly Data for Chart
+            const mergedHourly = mergeHourlyData(histPayload.hourly, forePayload.hourly, []);
+            setData(mergedHourly);
+
+            // Merge Daily Data for Tokens
+            // History Daily + Forecast Daily
+            // We need to deduplicate based on time. Forecast usually starts from Today. History ends Yesterday.
+            const rawDaily = [...(histPayload.daily || []), ...(forePayload.daily || [])];
+            const dailyMap = new Map();
+            rawDaily.forEach(d => {
+                const t = d.time.split('T')[0];
+                if (!dailyMap.has(t)) dailyMap.set(t, d);
+                else dailyMap.set(t, { ...dailyMap.get(t), ...d }); // Overwrite helper
+            });
+            const sortedDaily = Array.from(dailyMap.values()).sort((a, b) => new Date(a.time) - new Date(b.time));
+            setDailyData(sortedDaily);
+
+            // Select today
+            const today = new Date();
+            const todayData = sortedDaily.find(d => isSameDay(new Date(d.time), today));
+            if (todayData) setSelectedDay(todayData);
+
         } catch (err) {
             console.error(err);
             setError("Failed to load weather data.");
@@ -43,19 +75,23 @@ const WeatherDashboard = () => {
 
     const handlePredict = async () => {
         setPredicting(true);
+        setModelStats(null);
         try {
-            const res = await fetch(`${API_BASE}/predict?lat=${lat}&lon=${lon}&days=7`);
+            const res = await fetch(`${API_BASE}/predict?lat=${location.lat}&lon=${location.lon}&days=7`);
             const payload = await res.json();
 
             if (payload.prediction) {
-                // Re-merge with prediction
-                const newData = mergeData(
-                    // Recover existing history/forecast from state (imperfect but okay for MVP)
+                // prediction is hourly
+                const newData = mergeHourlyData(
                     data.filter(d => d.history !== null),
                     data.filter(d => d.forecast !== null),
                     payload.prediction
                 );
                 setData(newData);
+
+                if (payload.model_performance) {
+                    setModelStats(payload.model_performance);
+                }
             }
         } catch (err) {
             setError("AI Prediction failed.");
@@ -66,90 +102,210 @@ const WeatherDashboard = () => {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [location]);
 
-    // Helper to merge arrays by time
-    const mergeData = (hist, fore, pred) => {
+    const mergeHourlyData = (hist, fore, pred) => {
         const map = new Map();
-
-        // Normalize time to simple ISO string hour precision if needed
-        // But Open-Meteo returns ISO strings.
 
         hist.forEach(d => {
             const t = d.time;
-            if (!map.has(t)) map.set(t, { time: t });
-            map.get(t).history = d.temperature_2m;
+            map.set(t, { ...d, history: d.temperature_2m, unified_temp: d.temperature_2m });
         });
 
         fore.forEach(d => {
             const t = d.time;
-            if (!map.has(t)) map.set(t, { time: t });
-            map.get(t).forecast = d.temperature_2m;
+            const existing = map.get(t) || {};
+            const unified = existing.history !== undefined ? existing.history : d.temperature_2m;
+            map.set(t, { ...existing, ...d, forecast: d.temperature_2m, unified_temp: unified });
         });
 
         pred.forEach(d => {
-            const t = d.time; // key matches?
-            // Prediction returns predicted_temperature_2m
-            if (!map.has(t)) map.set(t, { time: t });
-            map.get(t).prediction = d.predicted_temperature_2m;
+            const t = d.time;
+            const existing = map.get(t) || {};
+            map.set(t, { ...existing, time: t, prediction: d.predicted_temperature_2m });
         });
 
         return Array.from(map.values()).sort((a, b) => new Date(a.time) - new Date(b.time));
     };
 
-    const currentTemp = data.find(d => d.history !== undefined)?.history || 0;
-    // Should ideally get *latest* history.
-    const latestHistory = [...data].reverse().find(d => d.history !== undefined);
+    // Logic for displaying 7 cards: Center = Today + offset
+    // We want to show [Center-3, Center-2, Center-1, Center, Center+1, Center+2, Center+3]
+    const visibleDays = React.useMemo(() => {
+        if (!dailyData.length) return [];
+
+        const today = startOfDay(new Date());
+        // Apply carousel offset (weeks)
+        const centerDate = addDays(today, carouselOffset * 7);
+
+        // Find index of centerDate in dailyData
+        // Note: dailyData string is yyyy-mm-dd
+        const centerIndex = dailyData.findIndex(d => isSameDay(new Date(d.time), centerDate));
+
+        if (centerIndex === -1) {
+            // Fallback if out of range, just show middle of what we have
+            return dailyData.slice(0, 7);
+        }
+
+        // Calculate start and end indices
+        let start = centerIndex - 3;
+        let end = centerIndex + 3;
+
+        // Adjust if out of bounds (padding logic could be complex, simple clamping here)
+        // BUT user wants to scroll infinite-ish? We only fetched 2 weeks back/fwd.
+        // If start < 0, we show what we have.
+
+        const slice = [];
+        for (let i = start; i <= end; i++) {
+            if (i >= 0 && i < dailyData.length) {
+                slice.push(dailyData[i]);
+            } else {
+                // Push placeholder or null? 
+                // Better to just not push or push a dummy date?
+                // Let's filter nulls later.
+            }
+        }
+        return slice;
+    }, [dailyData, carouselOffset]);
+
+    const current = data.find(d => d.history !== undefined) || data[0]; // fallback
+    const now = new Date();
+    const currentMetric = data.reduce((prev, curr) => {
+        return (Math.abs(new Date(curr.time) - now) < Math.abs(new Date(prev.time) - now) ? curr : prev);
+    }, data[0]);
+
 
     return (
-        <div className="space-y-6">
-            {/* Metrics Row */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-lg flex items-center justify-between">
-                    <div>
-                        <div className="text-slate-400 text-sm font-medium uppercase tracking-wider">Current Temp</div>
-                        <div className="text-3xl font-bold mt-1 text-white">{latestHistory ? latestHistory.history.toFixed(1) : "--"}°C</div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full lg:min-h-[calc(100vh-8rem)]">
+
+            {/* Sidebar / Top Panel on Mobile */}
+            <div className="lg:col-span-4 space-y-6 flex flex-col">
+                {/* Search & Map */}
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        <MapPin className="text-indigo-400" />
+                        Location
+                    </h2>
+                    <LocationSearch onLocationSelect={setLocation} />
+                    <div className="rounded-2xl overflow-hidden border border-white/10 mt-2">
+                        <WeatherMap lat={location.lat} lon={location.lon} onLocationSelect={setLocation} />
                     </div>
-                    <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
-                        <Thermometer size={24} />
+                    <div className="text-center text-slate-400 text-sm">
+                        Selected: <span className="text-white font-medium">{location.name}</span>
                     </div>
                 </div>
 
-                <div className="p-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-lg flex items-center justify-center col-span-1 md:col-span-2 relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                {/* Current Weather Big Widget */}
+                <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-3xl p-8 flex-1 flex flex-col justify-center items-center text-center backdrop-blur-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={100} /></div>
 
-                    <button
-                        onClick={handlePredict}
-                        disabled={predicting}
-                        className="relative z-10 flex items-center gap-3 px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold shadow-lg shadow-purple-500/25 hover:scale-105 transition-transform disabled:opacity-50 disabled:scale-100"
-                    >
-                        {predicting ? <RefreshCw className="animate-spin" /> : <BrainCircuit />}
-                        {predicting ? "Training Model..." : "Generate AI Prediction"}
-                    </button>
-                </div>
+                    <div className="z-10">
+                        <div className="text-slate-300 text-lg uppercase tracking-widest font-semibold mb-2">Now</div>
+                        <div className="text-7xl font-black text-white mb-4 tracking-tighter">
+                            {currentMetric?.temperature_2m ? Math.round(currentMetric.temperature_2m) : "--"}°
+                        </div>
 
-                <div className="p-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-lg flex items-center justify-between">
-                    <div>
-                        <div className="text-slate-400 text-sm font-medium uppercase tracking-wider">Accuracy</div>
-                        <div className="text-3xl font-bold mt-1 text-green-400">--%</div>
-                    </div>
-                    <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
-                        <Activity size={24} />
+                        <div className="flex gap-6 justify-center text-indigo-200">
+                            <div className="flex flex-col items-center">
+                                <Droplets size={20} className="mb-1" />
+                                <span className="text-sm">{currentMetric?.relative_humidity_2m || 0}%</span>
+                                <span className="text-[10px] opacity-70">Humidity</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <Wind size={20} className="mb-1" />
+                                <span className="text-sm">{currentMetric?.wind_speed_10m || 0} km/h</span>
+                                <span className="text-[10px] opacity-70">Wind</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                                <Activity size={20} className="mb-1" />
+                                <span className="text-sm">{currentMetric?.precipitation_probability || 0}%</span>
+                                <span className="text-[10px] opacity-70">Precip</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-8">
+                            <button
+                                onClick={handlePredict}
+                                disabled={predicting}
+                                className="flex items-center gap-2 px-6 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 transition-colors text-sm font-bold"
+                            >
+                                {predicting ? <RefreshCw className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
+                                {predicting ? "AI Thinking..." : "Predict Future"}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {loading ? (
-                <div className="h-[400px] w-full flex items-center justify-center text-slate-500">Loading data...</div>
-            ) : (
-                <WeatherChart data={data} />
-            )}
+            {/* Main Content Area */}
+            <div className="lg:col-span-8 flex flex-col gap-6">
 
-            {error && (
-                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-center">
-                    {error}
+                {/* History Grid (Carousel) */}
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold flex items-center gap-2 text-slate-200">
+                            <Activity className="text-emerald-400" />
+                            Daily Overview
+                        </h3>
+                        <div className="flex gap-2">
+                            <button onClick={() => setCarouselOffset(0)} className="px-3 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-200 text-xs font-bold uppercase tracking-wider transition-colors">
+                                Jump to Today
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-3 items-center">
+                        {/* Left Arrow */}
+                        <button
+                            onClick={() => setCarouselOffset(prev => prev - 1)}
+                            className="h-full flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all group"
+                        >
+                            <ChevronLeft size={24} className="text-slate-500 group-hover:text-white transition-colors" />
+                        </button>
+
+                        {/* Days (Show 5) */}
+                        {visibleDays.slice(1, 6).map((d, i) => (
+                            <DayTile
+                                key={i}
+                                day={d}
+                                onClick={() => setSelectedDay(d)}
+                                isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
+                            />
+                        ))}
+
+                        {/* Right Arrow */}
+                        <button
+                            onClick={() => setCarouselOffset(prev => prev + 1)}
+                            className="h-full flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all group"
+                        >
+                            <ChevronRight size={24} className="text-slate-500 group-hover:text-white transition-colors" />
+                        </button>
+                    </div>
+
+                    {/* Selected Day Details */}
+                    {selectedDay && (
+                        <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10 animate-in fade-in slide-in-from-top-4">
+                            <h4 className="font-bold text-lg mb-2">Details for {format(new Date(selectedDay.time), 'PPPP')}</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm text-slate-300">
+                                <div>Max Temp: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_max)}°</span></div>
+                                <div>Min Temp: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_min)}°</span></div>
+                                <div>Precip Sum: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_sum} mm</span></div>
+                                <div>Precip Prob: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_probability_max || selectedDay.precipitation_hours || '- '}%</span></div>
+                                <div>Code: <span className="text-white font-mono block text-lg">{selectedDay.weather_code}</span></div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            )}
+
+                {/* Chart Section */}
+                <div className="flex-1 min-h-[400px] flex flex-col">
+                    {loading ? (
+                        <div className="h-full flex items-center justify-center text-slate-500">Loading charts...</div>
+                    ) : (
+                        <WeatherChart data={data} modelStats={modelStats} />
+                    )}
+                </div>
+
+            </div>
         </div>
     );
 };

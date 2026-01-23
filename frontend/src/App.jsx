@@ -11,7 +11,7 @@ function App() {
         <div className="absolute -bottom-[20%] left-[20%] w-[50vw] h-[50vw] bg-cyan-500/10 rounded-full blur-[100px]" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto space-y-8">
+      <div className="relative z-10 w-full px-4 md:px-8 space-y-8">
         <header className="flex items-center justify-between border-b border-white/5 pb-4">
           <h1 className="text-4xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">
             Nostradamus.AI
