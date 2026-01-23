@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pandas
+scikit-learn
+requests
+openmeteo-requests
+python-dotenv
+httpx
