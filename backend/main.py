@@ -100,7 +100,15 @@ def predict_weather(
         if train_stats.get("status") == "error":
              raise HTTPException(status_code=500, detail="Model training failed")
 
-        forecast = predictor.predict_next_days(days, df)
+        # FETCH RECENT CONTEXT FOR INFERENCE
+        # Archive data might be 2-3 days old. We need the actual last 24h for valid lag features.
+        recent_df = client.get_recent_data(lat, lon, days_past=3)
+        if recent_df is None or len(recent_df) < 24:
+             # Fallback to training df if recent fetch fails
+             recent_df = df
+
+        # Multivariate recursive prediction (self-contained)
+        forecast = predictor.predict_next_days(days, recent_df)
         
         return {
             "model_performance": train_stats,

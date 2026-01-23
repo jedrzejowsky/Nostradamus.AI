@@ -28,9 +28,14 @@ const DayTile = ({ day, onClick, isSelected }) => {
                     : "bg-transparent border-transparent hover:bg-white/5"
             )}
         >
-            <span className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-3">
-                {format(date, 'EEE')}
-            </span>
+            <div className="flex flex-col items-center mb-2">
+                <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">
+                    {format(date, 'EEE')}
+                </span>
+                <span className="text-slate-600 font-medium text-[10px] mt-0.5">
+                    {format(date, 'd MMM')}
+                </span>
+            </div>
 
             <div className="mb-3 transform scale-125">
                 {getWeatherIcon(day.weather_code)}

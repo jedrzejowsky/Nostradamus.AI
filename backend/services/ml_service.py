@@ -21,8 +21,8 @@ class WeatherPredictor:
     def preprocess_data(self, df: pd.DataFrame):
         """
         Prepares features from the dataframe.
-        Features: Hour, DayOfYear, Month (Cyclical encoding ideally, but keeping simple for MVP).
-        Target: temperature_2m
+        Features: Hour, DayOfYear, Month, Lags (Temp, Wind, Hum).
+        Targets: temperature_2m, wind_speed_10m, relative_humidity_2m
         """
         df = df.copy()
         if "time" not in df.columns:
@@ -31,112 +31,112 @@ class WeatherPredictor:
         df["time"] = pd.to_datetime(df["time"])
         df = df.sort_values("time")
         
-        # Feature Engineering
+        # Feature Engineering: Time
         df["hour"] = df["time"].dt.hour
         df["month"] = df["time"].dt.month
         df["day_of_year"] = df["time"].dt.dayofyear
         
-        # Create lag features (e.g., temperature 24h ago)
-        # Shift by 24 rows assuming hourly data
-        df["temp_lag_24h"] = df["temperature_2m"].shift(24)
+        # Target Columns checking
+        targets = ["temperature_2m", "wind_speed_10m", "relative_humidity_2m"]
+        for t in targets:
+            if t not in df.columns:
+                return None, None
         
-        # Drop NaNs created by lagging
+        # Create lag features (24h) for ALL targets
+        df["temp_lag_24h"] = df["temperature_2m"].shift(24)
+        df["wind_lag_24h"] = df["wind_speed_10m"].shift(24)
+        df["hum_lag_24h"] = df["relative_humidity_2m"].shift(24)
+        
         df = df.dropna()
         
-        features = ["hour", "month", "day_of_year", "temp_lag_24h"]
-        target = "temperature_2m"
+        features = ["hour", "month", "day_of_year", "temp_lag_24h", "wind_lag_24h", "hum_lag_24h"]
         
-        return df[features], df[target]
+        return df[features], df[targets]
 
     def train(self, df: pd.DataFrame):
         """
-        Trains the model on the provided historical data.
+        Trains the model on historical data (Multivariate).
         """
         X, y = self.preprocess_data(df)
         if X is None or len(X) < 100:
-            print("Not enough data to train.")
             return {"status": "error", "message": "Insufficient data"}
 
-        # Use TimeSeriesSplit logic: Train on past, test on recent past
-        # Split: 80% train, 20% test
+        # Split
         split_idx = int(len(X) * 0.8)
         X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
         y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
-        # Fit model
+        # Fit model (RandomForest handles multi-output naturally)
         self.model_temp.fit(X_train, y_train)
         self.is_trained = True
         
-        # Evaluate on Test set (unseen data)
+        # Evaluate
         y_pred = self.model_temp.predict(X_test)
-        
         r2 = self.model_temp.score(X_test, y_test)
-        mae = mean_absolute_error(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred) # Average MAE across all targets
         
-        # Retrain on FULL dataset for future predictions
+        # Retrain on full
         self.model_temp.fit(X, y)
+        
+        feature_importance = dict(zip(X.columns, self.model_temp.feature_importances_))
 
         return {
             "status": "success", 
             "r2": r2,
-            "mae": mae
+            "mae": mae,
+            "feature_importance": feature_importance
         }
 
     def predict_next_days(self, days: int, last_historical_data: pd.DataFrame):
         """
-        Predicts weather for the next N days.
-        Requires recent historical data to establish lags.
-        Uses recursive forecasting strategy.
+        Predicts weather (Temp, Wind, Hum) for the next N days recursively.
         """
         if not self.is_trained:
             return None
 
-        # Need the last 24h of data to start the feedback loop
-        # We need to reconstruct the state at t=now
-        
         future_preds = []
-        
-        # Get last timestamp
         last_time = pd.to_datetime(last_historical_data["time"].iloc[-1])
         
-        # We need the last 24 values of temperature to use as lag buffer
-        # Assuming last_historical_data is sorted end-to-end
-        last_temps = last_historical_data["temperature_2m"].values[-24:] # Buffer of last 24h temps
-        if len(last_temps) < 24:
-             # Fallback if sparse data, though unlikely if fetching strictly
-             pass
+        # We need buffers for ALL 3 variables
+        required_cols = ["temperature_2m", "wind_speed_10m", "relative_humidity_2m"]
+        for col in required_cols:
+            if col not in last_historical_data.columns:
+                return None
+
+        # Buffers (last 24h)
+        buf_temp = list(last_historical_data["temperature_2m"].values[-24:])
+        buf_wind = list(last_historical_data["wind_speed_10m"].values[-24:])
+        buf_hum = list(last_historical_data["relative_humidity_2m"].values[-24:])
         
-        current_buffer = list(last_temps)
-        
-        for i in range(days * 24): # Forecast hourly
+        if len(buf_temp) < 24: return None # Safety
+
+        for i in range(days * 24):
             next_time = last_time + timedelta(hours=i+1)
             
             # Features
-            hour = next_time.hour
-            month = next_time.month
-            doy = next_time.timetuple().tm_yday
-            
-            # Lag 24h is the value extracted 24 hours ago from the buffer
-            # The buffer grows. index -24 from end is what we want?
-            # actually if we append predictions, we can just take [-24]
-            
-            lag_24 = current_buffer[-24]
-            
             features = pd.DataFrame([{
-                "hour": hour,
-                "month": month,
-                "day_of_year": doy,
-                "temp_lag_24h": lag_24
+                "hour": next_time.hour,
+                "month": next_time.month,
+                "day_of_year": next_time.timetuple().tm_yday,
+                "temp_lag_24h": buf_temp[-24],
+                "wind_lag_24h": buf_wind[-24],
+                "hum_lag_24h": buf_hum[-24]
             }])
             
-            pred_temp = self.model_temp.predict(features)[0]
+            # Predict [Temp, Wind, Hum]
+            pred = self.model_temp.predict(features)[0] # Returns array of 3
+            p_temp, p_wind, p_hum = pred[0], pred[1], pred[2]
             
             future_preds.append({
                 "time": next_time.isoformat(),
-                "predicted_temperature_2m": pred_temp
+                "predicted_temperature_2m": p_temp,
+                "predicted_wind_speed_10m": p_wind,
+                "predicted_relative_humidity_2m": p_hum
             })
             
-            # Update buffer
-            current_buffer.append(pred_temp)
+            # Update buffers
+            buf_temp.append(p_temp)
+            buf_wind.append(p_wind)
+            buf_hum.append(p_hum)
             
         return future_preds

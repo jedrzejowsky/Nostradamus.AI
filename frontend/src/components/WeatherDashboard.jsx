@@ -3,6 +3,7 @@ import WeatherChart from './WeatherChart';
 import LocationSearch from './LocationSearch';
 import WeatherMap from './WeatherMap';
 import DayTile from './DayTile';
+import ModelInsights from './ModelInsights';
 import { Thermometer, BrainCircuit, Activity, RefreshCw, MapPin, Droplets, Wind, Cloud, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, subDays, addDays, isSameDay, startOfDay } from 'date-fns';
 import { clsx } from 'clsx';
@@ -25,15 +26,18 @@ const WeatherDashboard = () => {
     const [selectedDay, setSelectedDay] = useState(null);
     const [carouselOffset, setCarouselOffset] = useState(0); // Offset in weeks (7 days)
     const [modelStats, setModelStats] = useState(null);
+    const [historyComparison, setHistoryComparison] = useState({ yearAgo: null, decadeAgo: null });
 
     const fetchData = async () => {
         setLoading(true);
         setError(null);
         setModelStats(null);
+        setHistoryComparison({ yearAgo: null, decadeAgo: null });
         try {
-            // Fetch 7 days history + 7 days forecast (reduced range per user request)
-            const startDate = format(subDays(new Date(), 7), 'yyyy-MM-dd');
-            const endDate = format(subDays(new Date(), 1), 'yyyy-MM-dd'); // History until yesterday
+            // Fetch 7 days history + 7 days forecast
+            const now = new Date();
+            const startDate = format(subDays(now, 7), 'yyyy-MM-dd');
+            const endDate = format(subDays(now, 1), 'yyyy-MM-dd');
 
             const histRes = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${startDate}&end_date=${endDate}`);
             if (!histRes.ok) throw new Error("Failed to fetch history");
@@ -43,27 +47,51 @@ const WeatherDashboard = () => {
             if (!foreRes.ok) throw new Error("Failed to fetch forecast");
             const forePayload = await foreRes.json();
 
-            // Merge Hourly Data for Chart
+            // Merge & Set Data
             const mergedHourly = mergeHourlyData(histPayload.hourly, forePayload.hourly, []);
             setData(mergedHourly);
 
-            // Merge Daily Data for Tokens
-            // History Daily + Forecast Daily
-            // We need to deduplicate based on time. Forecast usually starts from Today. History ends Yesterday.
+            // Daily Data Processing
             const rawDaily = [...(histPayload.daily || []), ...(forePayload.daily || [])];
             const dailyMap = new Map();
             rawDaily.forEach(d => {
                 const t = d.time.split('T')[0];
                 if (!dailyMap.has(t)) dailyMap.set(t, d);
-                else dailyMap.set(t, { ...dailyMap.get(t), ...d }); // Overwrite helper
+                else dailyMap.set(t, { ...dailyMap.get(t), ...d });
             });
             const sortedDaily = Array.from(dailyMap.values()).sort((a, b) => new Date(a.time) - new Date(b.time));
             setDailyData(sortedDaily);
 
             // Select today
-            const today = new Date();
-            const todayData = sortedDaily.find(d => isSameDay(new Date(d.time), today));
+            const todayData = sortedDaily.find(d => isSameDay(new Date(d.time), now));
             if (todayData) setSelectedDay(todayData);
+
+            // Fetch Historical Comparisons (Async, don't block main UI excessively, but here we await)
+            // 1 Year Ago
+            const date1y = subDays(now, 365);
+            const date10y = subDays(now, 365 * 10);
+
+            const fetchPointHistory = async (date) => {
+                const dStr = format(date, 'yyyy-MM-dd');
+                try {
+                    const res = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${dStr}&end_date=${dStr}`);
+                    const json = await res.json();
+                    if (json.hourly && json.hourly.length > 0) {
+                        // Find same hour
+                        const hour = now.getHours();
+                        const record = json.hourly.find(r => new Date(r.time).getHours() === hour);
+                        return record ? record.temperature_2m : null;
+                    }
+                } catch (e) { console.error(e); }
+                return null;
+            };
+
+            const [temp1y, temp10y] = await Promise.all([
+                fetchPointHistory(date1y),
+                fetchPointHistory(date10y)
+            ]);
+
+            setHistoryComparison({ yearAgo: temp1y, decadeAgo: temp10y });
 
         } catch (err) {
             console.error(err);
@@ -81,12 +109,25 @@ const WeatherDashboard = () => {
             const payload = await res.json();
 
             if (payload.prediction) {
-                // prediction is hourly
-                const newData = mergeHourlyData(
-                    data.filter(d => d.history !== null),
-                    data.filter(d => d.forecast !== null),
-                    payload.prediction
-                );
+                // Create a map using time values for robust matching
+                const predMap = new Map();
+                payload.prediction.forEach(p => {
+                    // Normalize time to handle potential differences (e.g. seconds)
+                    const timeKey = new Date(p.time).toISOString().slice(0, 16); // match 'YYYY-MM-DDTHH:mm'
+                    predMap.set(timeKey, p);
+                });
+
+                const newData = data.map(d => {
+                    const timeKey = new Date(d.time).toISOString().slice(0, 16);
+                    const pred = predMap.get(timeKey);
+                    return {
+                        ...d,
+                        prediction: pred ? pred.predicted_temperature_2m : null,
+                        prediction_wind: pred ? pred.predicted_wind_speed_10m : null,
+                        prediction_hum: pred ? pred.predicted_relative_humidity_2m : null
+                    };
+                });
+
                 setData(newData);
 
                 if (payload.model_performance) {
@@ -94,6 +135,7 @@ const WeatherDashboard = () => {
                 }
             }
         } catch (err) {
+            console.error(err);
             setError("AI Prediction failed.");
         } finally {
             setPredicting(false);
@@ -217,12 +259,26 @@ const WeatherDashboard = () => {
                             </div>
                             <div className="flex flex-col items-center">
                                 <Activity size={20} className="mb-1" />
-                                <span className="text-sm">{currentMetric?.precipitation_probability || 0}%</span>
+                                <span className="text-sm">
+                                    {currentMetric?.precipitation !== undefined ? currentMetric.precipitation : (currentMetric?.precipitation_probability || 0)}
+                                    {currentMetric?.precipitation !== undefined ? ' mm' : '%'}
+                                </span>
                                 <span className="text-[10px] opacity-70">Precip</span>
                             </div>
                         </div>
 
-                        <div className="mt-8">
+                        {/* Historical Context */}
+                        <div className="mt-6 border-t border-white/10 pt-4 w-full">
+                            <div className="text-[10px] uppercase tracking-widest text-indigo-300 font-semibold mb-2 text-center">Did You Know?</div>
+                            <div className="flex justify-center px-4 text-sm text-slate-300">
+                                <div className="flex flex-col items-center">
+                                    <span className="opacity-60 text-xs">1 Year Ago Today</span>
+                                    <span className="font-mono text-white text-lg">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-6">
                             <button
                                 onClick={handlePredict}
                                 disabled={predicting}
@@ -253,31 +309,34 @@ const WeatherDashboard = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-3 items-center">
-                        {/* Left Arrow */}
+                    <div className="relative md:px-12 px-0 py-2">
+                        {/* Left Arrow (Desktop) */}
                         <button
                             onClick={() => setCarouselOffset(prev => prev - 1)}
-                            className="h-full flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all group"
+                            className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
                         >
-                            <ChevronLeft size={24} className="text-slate-500 group-hover:text-white transition-colors" />
+                            <ChevronLeft size={24} />
                         </button>
 
-                        {/* Days (Show 5) */}
-                        {visibleDays.slice(1, 6).map((d, i) => (
-                            <DayTile
-                                key={i}
-                                day={d}
-                                onClick={() => setSelectedDay(d)}
-                                isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
-                            />
-                        ))}
+                        {/* Days Grid/Scroll */}
+                        <div className="flex md:grid md:grid-cols-5 gap-3 overflow-x-auto snap-x no-scrollbar px-4 md:px-0 pb-2 md:pb-0">
+                            {visibleDays.slice(0, 5).map((d, i) => (
+                                <div key={i} className="min-w-[100px] md:min-w-0 snap-center">
+                                    <DayTile
+                                        day={d}
+                                        onClick={() => setSelectedDay(d)}
+                                        isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
+                                    />
+                                </div>
+                            ))}
+                        </div>
 
-                        {/* Right Arrow */}
+                        {/* Right Arrow (Desktop) */}
                         <button
                             onClick={() => setCarouselOffset(prev => prev + 1)}
-                            className="h-full flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/10 transition-all group"
+                            className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
                         >
-                            <ChevronRight size={24} className="text-slate-500 group-hover:text-white transition-colors" />
+                            <ChevronRight size={24} />
                         </button>
                     </div>
 
@@ -290,18 +349,20 @@ const WeatherDashboard = () => {
                                 <div>Min Temp: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_min)}°</span></div>
                                 <div>Precip Sum: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_sum} mm</span></div>
                                 <div>Precip Prob: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_probability_max || selectedDay.precipitation_hours || '- '}%</span></div>
-                                <div>Code: <span className="text-white font-mono block text-lg">{selectedDay.weather_code}</span></div>
                             </div>
                         </div>
                     )}
                 </div>
 
                 {/* Chart Section */}
-                <div className="flex-1 min-h-[400px] flex flex-col">
+                <div className="flex-1 min-h-[400px] flex flex-col gap-6">
                     {loading ? (
                         <div className="h-full flex items-center justify-center text-slate-500">Loading charts...</div>
                     ) : (
-                        <WeatherChart data={data} modelStats={modelStats} />
+                        <>
+                            <WeatherChart data={data} modelStats={modelStats} />
+                            {modelStats && <ModelInsights stats={modelStats} />}
+                        </>
                     )}
                 </div>
 
