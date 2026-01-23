@@ -24,7 +24,8 @@ class OpenMeteoClient:
             "longitude": longitude,
             "start_date": start_date,
             "end_date": end_date,
-            "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "relative_humidity_2m"],
+            "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "relative_humidity_2m", "rain", "snowfall", "weather_code", "cloud_cover"],
+            "daily": ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "weather_code", "precipitation_hours"],
             "timezone": "auto"
         }
 
@@ -33,14 +34,17 @@ class OpenMeteoClient:
             response.raise_for_status()
             data = response.json()
             
-            # Process hourly data into a Pandas DataFrame
+            # Process hourly
             hourly = data.get("hourly", {})
-            df = pd.DataFrame(hourly)
+            df_hourly = pd.DataFrame(hourly)
+            df_hourly["time"] = pd.to_datetime(df_hourly["time"])
             
-            # Convert time string to datetime objects
-            df["time"] = pd.to_datetime(df["time"])
+            # Process daily
+            daily = data.get("daily", {})
+            df_daily = pd.DataFrame(daily)
+            df_daily["time"] = pd.to_datetime(df_daily["time"])
             
-            return df
+            return {"hourly": df_hourly, "daily": df_daily}
         except Exception as e:
             print(f"Error fetching historical data: {e}")
             return None
@@ -52,7 +56,8 @@ class OpenMeteoClient:
         params = {
             "latitude": latitude,
             "longitude": longitude,
-            "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "relative_humidity_2m"],
+            "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "relative_humidity_2m", "rain", "snowfall", "weather_code", "cloud_cover"],
+            "daily": ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "weather_code", "precipitation_probability_max"],
             "forecast_days": days,
             "timezone": "auto"
         }
@@ -63,10 +68,14 @@ class OpenMeteoClient:
             data = response.json()
             
             hourly = data.get("hourly", {})
-            df = pd.DataFrame(hourly)
-            df["time"] = pd.to_datetime(df["time"])
+            df_hourly = pd.DataFrame(hourly)
+            df_hourly["time"] = pd.to_datetime(df_hourly["time"])
             
-            return df
+            daily = data.get("daily", {})
+            df_daily = pd.DataFrame(daily)
+            df_daily["time"] = pd.to_datetime(df_daily["time"])
+            
+            return {"hourly": df_hourly, "daily": df_daily}
         except Exception as e:
             print(f"Error fetching forecast data: {e}")
             return None

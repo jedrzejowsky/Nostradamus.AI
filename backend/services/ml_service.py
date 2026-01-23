@@ -57,18 +57,30 @@ class WeatherPredictor:
             print("Not enough data to train.")
             return {"status": "error", "message": "Insufficient data"}
 
-        # Train/Test logic could go here, but we train on all for production model
-        output = {}
-        
+        # Use TimeSeriesSplit logic: Train on past, test on recent past
+        # Split: 80% train, 20% test
+        split_idx = int(len(X) * 0.8)
+        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+
         # Fit model
-        self.model_temp.fit(X, y)
+        self.model_temp.fit(X_train, y_train)
         self.is_trained = True
         
-        # Save model (optional persistence)
-        # joblib.dump(self.model_temp, self.model_path)
+        # Evaluate on Test set (unseen data)
+        y_pred = self.model_temp.predict(X_test)
         
-        score = self.model_temp.score(X, y) # R^2 score
-        return {"status": "success", "r2_score": score}
+        r2 = self.model_temp.score(X_test, y_test)
+        mae = mean_absolute_error(y_test, y_pred)
+        
+        # Retrain on FULL dataset for future predictions
+        self.model_temp.fit(X, y)
+
+        return {
+            "status": "success", 
+            "r2": r2,
+            "mae": mae
+        }
 
     def predict_next_days(self, days: int, last_historical_data: pd.DataFrame):
         """
