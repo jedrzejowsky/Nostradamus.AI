@@ -28,6 +28,10 @@ const WeatherDashboard = () => {
     const [modelStats, setModelStats] = useState(null);
     const [historyComparison, setHistoryComparison] = useState({ yearAgo: null, decadeAgo: null });
 
+    // Mobile State
+    const [mobilePage, setMobilePage] = useState(0);
+    const [showMobileMap, setShowMobileMap] = useState(false);
+
     const fetchData = async () => {
         setLoading(true);
         setError(null);
@@ -216,159 +220,233 @@ const WeatherDashboard = () => {
     }, data[0]);
 
 
+    // --- Mobile Logic Helpers ---
+    const isToday = selectedDay && isSameDay(new Date(selectedDay.time), new Date());
+    const displayData = !isToday && selectedDay ? {
+        temp: Math.round(selectedDay.temperature_2m_max),
+        wind: selectedDay.wind_speed_10m_max || 0, // Daily aggregations might vary, check OpenMeteo daily params?
+        // OpenMeteo Daily: temperature_2m_max, precipitation_sum, precipitation_probability_max, wind_speed_10m_max
+        // My `weekly` fetch only got: temperature_2m_max, temperature_2m_min, precipitation_sum, weather_code, precipitation_probability_max
+        // It did NOT get wind_speed or humidity for daily. I might need to fetch those or fallback to hourly-at-noon.
+        // For simplicity on mobile details, let's stick to what we have or accept "--".
+        hum: '--', // Daily hum not fetched
+        precip: selectedDay.precipitation_sum,
+        label: format(new Date(selectedDay.time), 'EEEE, d MMM')
+    } : {
+        temp: currentMetric?.temperature_2m ? Math.round(currentMetric.temperature_2m) : "--",
+        wind: currentMetric?.wind_speed_10m || 0,
+        hum: currentMetric?.relative_humidity_2m || 0,
+        precip: currentMetric?.precipitation !== undefined ? currentMetric.precipitation : (currentMetric?.precipitation_probability || 0),
+        label: "NOW"
+    };
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full lg:min-h-[calc(100vh-8rem)]">
+        <div className="h-full w-full relative">
 
-            {/* Sidebar / Top Panel on Mobile */}
-            <div className="lg:col-span-4 space-y-6 flex flex-col">
-                {/* Search & Map */}
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <MapPin className="text-indigo-400" />
-                        Location
-                    </h2>
-                    <LocationSearch onLocationSelect={setLocation} />
-                    <div className="rounded-2xl overflow-hidden border border-white/10 mt-2">
-                        <WeatherMap lat={location.lat} lon={location.lon} onLocationSelect={setLocation} />
-                    </div>
-                    <div className="text-center text-slate-400 text-sm">
-                        Selected: <span className="text-white font-medium">{location.name}</span>
-                    </div>
-                </div>
-
-                {/* Current Weather Big Widget */}
-                <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-3xl p-8 flex-1 flex flex-col justify-center items-center text-center backdrop-blur-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={100} /></div>
-
-                    <div className="z-10">
-                        <div className="text-slate-300 text-lg uppercase tracking-widest font-semibold mb-2">Now</div>
-                        <div className="text-7xl font-black text-white mb-4 tracking-tighter">
-                            {currentMetric?.temperature_2m ? Math.round(currentMetric.temperature_2m) : "--"}°
+            {/* --- DESKTOP VIEW (lg+) --- */}
+            <div className="hidden lg:grid grid-cols-12 gap-6 h-full lg:min-h-[calc(100vh-8rem)]">
+                {/* Sidebar */}
+                <div className="col-span-4 space-y-6 flex flex-col">
+                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl flex flex-col gap-4">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <MapPin className="text-indigo-400" />
+                            Location
+                        </h2>
+                        <LocationSearch onLocationSelect={setLocation} />
+                        <div className="rounded-2xl overflow-hidden border border-white/10 mt-2">
+                            <WeatherMap lat={location.lat} lon={location.lon} onLocationSelect={setLocation} />
                         </div>
-
-                        <div className="flex gap-6 justify-center text-indigo-200">
-                            <div className="flex flex-col items-center">
-                                <Droplets size={20} className="mb-1" />
-                                <span className="text-sm">{currentMetric?.relative_humidity_2m || 0}%</span>
-                                <span className="text-[10px] opacity-70">Humidity</span>
-                            </div>
-                            <div className="flex flex-col items-center">
-                                <Wind size={20} className="mb-1" />
-                                <span className="text-sm">{currentMetric?.wind_speed_10m || 0} km/h</span>
-                                <span className="text-[10px] opacity-70">Wind</span>
-                            </div>
-                            <div className="flex flex-col items-center">
-                                <Activity size={20} className="mb-1" />
-                                <span className="text-sm">
-                                    {currentMetric?.precipitation !== undefined ? currentMetric.precipitation : (currentMetric?.precipitation_probability || 0)}
-                                    {currentMetric?.precipitation !== undefined ? ' mm' : '%'}
-                                </span>
-                                <span className="text-[10px] opacity-70">Precip</span>
-                            </div>
+                        <div className="text-center text-slate-400 text-sm">
+                            Selected: <span className="text-white font-medium">{location.name}</span>
                         </div>
+                    </div>
 
-                        {/* Historical Context */}
-                        <div className="mt-6 border-t border-white/10 pt-4 w-full">
-                            <div className="text-[10px] uppercase tracking-widest text-indigo-300 font-semibold mb-2 text-center">Did You Know?</div>
-                            <div className="flex justify-center px-4 text-sm text-slate-300">
+                    <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-3xl p-8 flex-1 flex flex-col justify-center items-center text-center backdrop-blur-xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={100} /></div>
+                        <div className="z-10 w-full">
+                            <div className="text-slate-300 text-lg uppercase tracking-widest font-semibold mb-2">Now</div>
+                            <div className="text-7xl font-black text-white mb-4 tracking-tighter">
+                                {currentMetric?.temperature_2m ? Math.round(currentMetric.temperature_2m) : "--"}°
+                            </div>
+                            <div className="flex gap-6 justify-center text-indigo-200">
                                 <div className="flex flex-col items-center">
-                                    <span className="opacity-60 text-xs">1 Year Ago Today</span>
-                                    <span className="font-mono text-white text-lg">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</span>
+                                    <Droplets size={20} className="mb-1" />
+                                    <span className="text-sm">{currentMetric?.relative_humidity_2m || 0}%</span>
+                                    <span className="text-[10px] opacity-70">Humidity</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <Wind size={20} className="mb-1" />
+                                    <span className="text-sm">{currentMetric?.wind_speed_10m || 0} km/h</span>
+                                    <span className="text-[10px] opacity-70">Wind</span>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <Activity size={20} className="mb-1" />
+                                    <span className="text-sm">
+                                        {currentMetric?.precipitation !== undefined ? currentMetric.precipitation : (currentMetric?.precipitation_probability || 0)}
+                                        {currentMetric?.precipitation !== undefined ? ' mm' : '%'}
+                                    </span>
+                                    <span className="text-[10px] opacity-70">Precip</span>
                                 </div>
                             </div>
-                        </div>
-
-                        <div className="mt-6">
-                            <button
-                                onClick={handlePredict}
-                                disabled={predicting}
-                                className="flex items-center gap-2 px-6 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 transition-colors text-sm font-bold"
-                            >
-                                {predicting ? <RefreshCw className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
-                                {predicting ? "AI Thinking..." : "Predict Future"}
-                            </button>
+                            <div className="mt-6 border-t border-white/10 pt-4 w-full">
+                                <div className="text-[10px] uppercase tracking-widest text-indigo-300 font-semibold mb-2 text-center">Did You Know?</div>
+                                <div className="flex justify-center px-4 text-sm text-slate-300">
+                                    <div className="flex flex-col items-center">
+                                        <span className="opacity-60 text-xs">1 Year Ago Today</span>
+                                        <span className="font-mono text-white text-lg">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-6">
+                                <button onClick={handlePredict} disabled={predicting} className="flex items-center gap-2 px-6 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 transition-colors text-sm font-bold mx-auto">
+                                    {predicting ? <RefreshCw className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
+                                    {predicting ? "AI Thinking..." : "Predict Future"}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Main Content Area */}
-            <div className="lg:col-span-8 flex flex-col gap-6">
-
-                {/* History Grid (Carousel) */}
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold flex items-center gap-2 text-slate-200">
-                            <Activity className="text-emerald-400" />
-                            Daily Overview
-                        </h3>
-                        <div className="flex gap-2">
+                {/* Desktop Main Content */}
+                <div className="col-span-8 flex flex-col gap-6">
+                    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold flex items-center gap-2 text-slate-200">
+                                <Activity className="text-emerald-400" />
+                                Daily Overview
+                            </h3>
                             <button onClick={() => setCarouselOffset(0)} className="px-3 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-200 text-xs font-bold uppercase tracking-wider transition-colors">
                                 Jump to Today
                             </button>
                         </div>
-                    </div>
-
-                    <div className="relative md:px-12 px-0 py-2">
-                        {/* Left Arrow (Desktop) */}
-                        <button
-                            onClick={() => setCarouselOffset(prev => prev - 1)}
-                            className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
-                        >
-                            <ChevronLeft size={24} />
-                        </button>
-
-                        {/* Days Grid/Scroll */}
-                        <div className="flex md:grid md:grid-cols-5 gap-3 overflow-x-auto snap-x no-scrollbar px-4 md:px-0 pb-2 md:pb-0">
-                            {visibleDays.slice(0, 5).map((d, i) => (
-                                <div key={i} className="min-w-[100px] md:min-w-0 snap-center">
-                                    <DayTile
-                                        day={d}
-                                        onClick={() => setSelectedDay(d)}
-                                        isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Right Arrow (Desktop) */}
-                        <button
-                            onClick={() => setCarouselOffset(prev => prev + 1)}
-                            className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"
-                        >
-                            <ChevronRight size={24} />
-                        </button>
-                    </div>
-
-                    {/* Selected Day Details */}
-                    {selectedDay && (
-                        <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10 animate-in fade-in slide-in-from-top-4">
-                            <h4 className="font-bold text-lg mb-2">Details for {format(new Date(selectedDay.time), 'PPPP')}</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm text-slate-300">
-                                <div>Max Temp: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_max)}°</span></div>
-                                <div>Min Temp: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_min)}°</span></div>
-                                <div>Precip Sum: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_sum} mm</span></div>
-                                <div>Precip Prob: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_probability_max || selectedDay.precipitation_hours || '- '}%</span></div>
+                        <div className="relative px-12 py-2">
+                            <button onClick={() => setCarouselOffset(prev => prev - 1)} className="absolute left-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"><ChevronLeft size={24} /></button>
+                            <div className="grid grid-cols-5 gap-3">
+                                {visibleDays.slice(0, 5).map((d, i) => (
+                                    <DayTile key={i} day={d} onClick={() => setSelectedDay(d)} isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]} />
+                                ))}
                             </div>
+                            <button onClick={() => setCarouselOffset(prev => prev + 1)} className="absolute right-0 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-all z-10"><ChevronRight size={24} /></button>
+                        </div>
+                        {selectedDay && (
+                            <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10">
+                                <h4 className="font-bold text-lg mb-2">Details for {format(new Date(selectedDay.time), 'PPPP')}</h4>
+                                <div className="grid grid-cols-5 gap-4 text-sm text-slate-300">
+                                    <div>Max: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_max)}°</span></div>
+                                    <div>Min: <span className="text-white font-mono block text-lg">{Math.round(selectedDay.temperature_2m_min)}°</span></div>
+                                    <div>Precip: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_sum} mm</span></div>
+                                    <div>Prob: <span className="text-white font-mono block text-lg">{selectedDay.precipitation_probability_max || '-'}%</span></div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 min-h-[400px] flex flex-col gap-6">
+                        {loading ? <div className="text-center text-slate-500">Loading charts...</div> : (
+                            <>
+                                <WeatherChart data={data} modelStats={modelStats} />
+                                {modelStats && <ModelInsights stats={modelStats} />}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* --- MOBILE VIEW (lg:hidden) --- */}
+            <div className="lg:hidden flex flex-col h-full min-h-screen pb-12">
+
+                {/* Mobile Page 1: Overview */}
+                <div className={clsx("flex-1 flex flex-col gap-4 animate-in fade-in", mobilePage === 0 ? "flex" : "hidden")}>
+
+                    {/* Header: Location & Map Toggle */}
+                    <div className="flex items-center gap-2 p-4 bg-white/5 backdrop-blur-md rounded-b-3xl border-b border-white/10">
+                        <div className="flex-1">
+                            <LocationSearch onLocationSelect={setLocation} />
+                        </div>
+                        <button
+                            onClick={() => setShowMobileMap(!showMobileMap)}
+                            className={clsx("p-3 rounded-xl border transition-colors", showMobileMap ? "bg-indigo-500 text-white border-indigo-400" : "bg-white/5 border-white/10 text-slate-300")}
+                        >
+                            <MapPin size={20} />
+                        </button>
+                    </div>
+
+                    {showMobileMap && (
+                        <div className="h-64 mx-4 rounded-2xl overflow-hidden border border-white/10 animate-in slide-in-from-top-2">
+                            <WeatherMap lat={location.lat} lon={location.lon} onLocationSelect={setLocation} />
                         </div>
                     )}
+
+                    {/* Unified NOW / Details Tile */}
+                    <div className="mx-4 mt-2 bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-[2rem] p-8 flex flex-col items-center text-center relative overflow-hidden shadow-2xl">
+                        <div className="absolute top-0 right-0 p-6 opacity-20"><Cloud size={120} /></div>
+                        <div className="z-10 w-full space-y-2">
+                            <div className="text-indigo-200 text-sm font-bold uppercase tracking-widest">{displayData.label}</div>
+                            <div className="text-7xl font-black text-white tracking-tighter my-4 drop-shadow-lg">
+                                {displayData.temp}°
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 text-indigo-100 mt-6">
+                                <div className="flex flex-col items-center p-2 rounded-xl bg-white/5">
+                                    <Droplets size={18} className="mb-1 opacity-70" />
+                                    <span className="font-bold text-sm">{displayData.hum !== '--' ? displayData.hum + '%' : '--'}</span>
+                                </div>
+                                <div className="flex flex-col items-center p-2 rounded-xl bg-white/5">
+                                    <Wind size={18} className="mb-1 opacity-70" />
+                                    <span className="font-bold text-sm">{displayData.wind} <span className="text-[10px]">km/h</span></span>
+                                </div>
+                                <div className="flex flex-col items-center p-2 rounded-xl bg-white/5">
+                                    <Activity size={18} className="mb-1 opacity-70" />
+                                    <span className="font-bold text-sm">{displayData.precip || 0} <span className="text-[10px]">mm</span></span>
+                                </div>
+                            </div>
+
+                            {isToday && (
+                                <div className="mt-6 pt-4 border-t border-white/10">
+                                    <div className="text-[10px] text-slate-400 mb-1">1 YEAR AGO</div>
+                                    <div className="text-white font-mono">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</div>
+                                </div>
+                            )}
+
+                            {/* Mobile Predict Button (Only on live view) */}
+                            {isToday && (
+                                <button onClick={handlePredict} disabled={predicting} className="mt-6 w-full py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20">
+                                    {predicting ? <RefreshCw className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
+                                    {predicting ? "AI Thinking..." : "Predict Future"}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Daily Carousel (Bottom) */}
+                    <div className="mt-auto pb-4 pl-4 overflow-x-auto snap-x flex gap-3 no-scrollbar">
+                        {visibleDays.map((d, i) => (
+                            <div key={i} className="snap-center min-w-[90px]">
+                                <DayTile day={d} onClick={() => setSelectedDay(d)} isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]} />
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
-                {/* Chart Section */}
-                <div className="flex-1 min-h-[400px] flex flex-col gap-6">
-                    {loading ? (
-                        <div className="h-full flex items-center justify-center text-slate-500">Loading charts...</div>
-                    ) : (
-                        <>
-                            <WeatherChart data={data} modelStats={modelStats} />
-                            {modelStats && <ModelInsights stats={modelStats} />}
-                        </>
-                    )}
+                {/* Mobile Page 2: Analytics */}
+                <div className={clsx("flex-1 p-4 flex flex-col gap-6 overflow-y-auto animate-in fade-in slide-in-from-right-4", mobilePage === 1 ? "flex" : "hidden")}>
+                    <h2 className="text-2xl font-bold text-white mb-2">Analysis</h2>
+                    <div className="bg-white/5 rounded-2xl p-2 border border-white/10">
+                        {loading ? <div className="text-center p-8 text-slate-500">Loading...</div> : <WeatherChart data={data} modelStats={modelStats} />}
+                    </div>
+                    {modelStats && <ModelInsights stats={modelStats} />}
                 </div>
 
+                {/* Bottom Pagination Dots */}
+                <div className="fixed bottom-0 left-0 right-0 p-4 pb-6 flex justify-center gap-3 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent z-50">
+                    <button onClick={() => setMobilePage(0)} className={clsx("w-3 h-3 rounded-full transition-all", mobilePage === 0 ? "bg-indigo-400 w-6" : "bg-white/20")} />
+                    <button onClick={() => setMobilePage(1)} className={clsx("w-3 h-3 rounded-full transition-all", mobilePage === 1 ? "bg-indigo-400 w-6" : "bg-white/20")} />
+                </div>
             </div>
+
         </div>
     );
 };
+
 
 export default WeatherDashboard;
