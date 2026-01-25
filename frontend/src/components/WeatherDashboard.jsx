@@ -275,7 +275,8 @@ const WeatherDashboard = () => {
                     <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-3xl p-8 flex-1 flex flex-col justify-center items-center text-center backdrop-blur-xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-20"><Cloud size={100} /></div>
                         <div className="z-10 w-full">
-                            <div className="text-slate-300 text-lg uppercase tracking-widest font-semibold mb-2">Now</div>
+                            <div className="text-slate-300 text-lg uppercase tracking-widest font-semibold mb-1">Now</div>
+                            <div className="text-white text-xl font-bold mb-2">{location.name}</div>
                             <div className="text-7xl font-black text-white mb-4 tracking-tighter">
                                 {currentMetric?.temperature_2m ? Math.round(currentMetric.temperature_2m) : "--"}°
                             </div>
@@ -394,7 +395,8 @@ const WeatherDashboard = () => {
                         <div className="w-full h-full bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-2xl p-3 relative overflow-hidden shadow-2xl flex flex-col">
                             <div className="absolute top-0 right-0 p-2 opacity-10"><Cloud size={60} /></div>
                             <div className="z-10 w-full h-full flex flex-col items-center justify-between py-2">
-                                <div className="text-indigo-200 text-[9px] font-bold uppercase tracking-widest">{displayData.label}</div>
+                                <div className="text-indigo-200 text-[20px] font-bold uppercase tracking-widest">{displayData.label}</div>
+                                <div className="text-white text-sm font-semibold truncate max-w-full px-2">{location.name}</div>
                                 <div className="text-4xl font-black text-white tracking-tighter drop-shadow-lg">
                                     {displayData.temp}°
                                 </div>
