@@ -137,6 +137,17 @@ const WeatherDashboard = () => {
                 if (payload.model_performance) {
                     setModelStats(payload.model_performance);
                 }
+
+                // Update selectedDay to reflect new prediction data
+                if (selectedDay) {
+                    const selectedTime = selectedDay.time;
+                    const updatedDay = newData.find(d => d.time === selectedTime);
+                    if (updatedDay) {
+                        setSelectedDay(updatedDay);
+                    }
+                } else if (newData.length > 0) {
+                    setSelectedDay(newData[0]);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -241,7 +252,7 @@ const WeatherDashboard = () => {
     };
 
     return (
-        <div className="h-full w-full relative">
+        <div className="h-full w-full relative lg:overflow-visible overflow-hidden max-h-[100dvh] lg:max-h-none">
 
             {/* --- DESKTOP VIEW (lg+) --- */}
             <div className="hidden lg:grid grid-cols-12 gap-6 h-full lg:min-h-[calc(100vh-8rem)]">
@@ -353,75 +364,83 @@ const WeatherDashboard = () => {
             </div>
 
             {/* --- MOBILE VIEW (lg:hidden) --- */}
-            <div className="lg:hidden flex flex-col h-full min-h-screen pb-12">
+            <div className="lg:hidden flex flex-col h-[100dvh] overflow-hidden relative bg-slate-900">
 
                 {/* Mobile Page 1: Overview */}
-                <div className={clsx("flex-1 flex flex-col gap-4 animate-in fade-in", mobilePage === 0 ? "flex" : "hidden")}>
+                <div className={clsx("flex flex-col h-full pb-10", mobilePage === 0 ? "flex" : "hidden")}>
 
                     {/* Header: Location & Map Toggle */}
-                    <div className="flex items-center gap-2 p-4 bg-white/5 backdrop-blur-md rounded-b-3xl border-b border-white/10">
+                    <div className="shrink-0 flex items-center gap-2 p-2 pb-0 z-20">
                         <div className="flex-1">
                             <LocationSearch onLocationSelect={setLocation} />
                         </div>
                         <button
+                            type="button"
                             onClick={() => setShowMobileMap(!showMobileMap)}
-                            className={clsx("p-3 rounded-xl border transition-colors", showMobileMap ? "bg-indigo-500 text-white border-indigo-400" : "bg-white/5 border-white/10 text-slate-300")}
+                            className={clsx("p-2 rounded-xl border transition-colors", showMobileMap ? "bg-indigo-500 text-white border-indigo-400" : "bg-white/5 border-white/10 text-slate-300")}
                         >
-                            <MapPin size={20} />
+                            <MapPin size={18} />
                         </button>
                     </div>
 
                     {showMobileMap && (
-                        <div className="h-64 mx-4 rounded-2xl overflow-hidden border border-white/10 animate-in slide-in-from-top-2">
+                        <div className="shrink-0 h-32 mx-2 my-1 rounded-2xl overflow-hidden border border-white/10 relative z-10">
                             <WeatherMap lat={location.lat} lon={location.lon} onLocationSelect={setLocation} />
                         </div>
                     )}
 
-                    {/* Unified NOW / Details Tile */}
-                    <div className="mx-4 mt-2 bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-[2rem] p-8 flex flex-col items-center text-center relative overflow-hidden shadow-2xl">
-                        <div className="absolute top-0 right-0 p-6 opacity-20"><Cloud size={120} /></div>
-                        <div className="z-10 w-full space-y-2">
-                            <div className="text-indigo-200 text-sm font-bold uppercase tracking-widest">{displayData.label}</div>
-                            <div className="text-7xl font-black text-white tracking-tighter my-4 drop-shadow-lg">
-                                {displayData.temp}°
+                    {/* NOW Tile - fills available space */}
+                    <div className="flex-1 px-3 py-1 flex flex-col">
+                        <div className="w-full h-full bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-indigo-500/30 rounded-2xl p-3 relative overflow-hidden shadow-2xl flex flex-col">
+                            <div className="absolute top-0 right-0 p-2 opacity-10"><Cloud size={60} /></div>
+                            <div className="z-10 w-full h-full flex flex-col items-center justify-between py-2">
+                                <div className="text-indigo-200 text-[9px] font-bold uppercase tracking-widest">{displayData.label}</div>
+                                <div className="text-4xl font-black text-white tracking-tighter drop-shadow-lg">
+                                    {displayData.temp}°
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-1 text-indigo-100 mt-1 w-full max-w-[200px]">
+                                    <div className="flex flex-col items-center py-1 rounded-lg bg-white/5 border border-white/5">
+                                        <Droplets size={12} className="opacity-70" />
+                                        <span className="font-bold text-[9px]">{displayData.hum !== '--' ? displayData.hum + '%' : '--'}</span>
+                                    </div>
+                                    <div className="flex flex-col items-center py-1 rounded-lg bg-white/5 border border-white/5">
+                                        <Wind size={12} className="opacity-70" />
+                                        <span className="font-bold text-[9px]">{displayData.wind}<span className="text-[7px]">km/h</span></span>
+                                    </div>
+                                    <div className="flex flex-col items-center py-1 rounded-lg bg-white/5 border border-white/5">
+                                        <Activity size={12} className="opacity-70" />
+                                        <span className="font-bold text-[9px]">{displayData.precip || 0}<span className="text-[7px]">mm</span></span>
+                                    </div>
+                                </div>
+
+                                {isToday && (
+                                    <div className="mt-1 pt-0.5 border-t border-white/10 w-full text-center">
+                                        <div className="text-[7px] text-slate-400">1 YEAR AGO</div>
+                                        <div className="text-white font-mono text-[10px]">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</div>
+                                    </div>
+                                )}
+
+                                {/* Mobile Predict Button */}
+                                {isToday && (
+                                    <button
+                                        type="button"
+                                        onClick={handlePredict}
+                                        disabled={predicting}
+                                        className="mt-1 w-full max-w-[200px] py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-[10px] flex items-center justify-center gap-1 shadow-lg shadow-indigo-500/20 active:scale-95 transition-all z-20"
+                                    >
+                                        {predicting ? <RefreshCw className="animate-spin" size={12} /> : <BrainCircuit size={12} />}
+                                        {predicting ? "Thinking..." : "Predict Future"}
+                                    </button>
+                                )}
                             </div>
-
-                            <div className="grid grid-cols-3 gap-2 text-indigo-100 mt-6">
-                                <div className="flex flex-col items-center p-2 rounded-xl bg-white/5">
-                                    <Droplets size={18} className="mb-1 opacity-70" />
-                                    <span className="font-bold text-sm">{displayData.hum !== '--' ? displayData.hum + '%' : '--'}</span>
-                                </div>
-                                <div className="flex flex-col items-center p-2 rounded-xl bg-white/5">
-                                    <Wind size={18} className="mb-1 opacity-70" />
-                                    <span className="font-bold text-sm">{displayData.wind} <span className="text-[10px]">km/h</span></span>
-                                </div>
-                                <div className="flex flex-col items-center p-2 rounded-xl bg-white/5">
-                                    <Activity size={18} className="mb-1 opacity-70" />
-                                    <span className="font-bold text-sm">{displayData.precip || 0} <span className="text-[10px]">mm</span></span>
-                                </div>
-                            </div>
-
-                            {isToday && (
-                                <div className="mt-6 pt-4 border-t border-white/10">
-                                    <div className="text-[10px] text-slate-400 mb-1">1 YEAR AGO</div>
-                                    <div className="text-white font-mono">{historyComparison.yearAgo !== null ? Math.round(historyComparison.yearAgo) + '°' : '--'}</div>
-                                </div>
-                            )}
-
-                            {/* Mobile Predict Button (Only on live view) */}
-                            {isToday && (
-                                <button onClick={handlePredict} disabled={predicting} className="mt-6 w-full py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20">
-                                    {predicting ? <RefreshCw className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
-                                    {predicting ? "AI Thinking..." : "Predict Future"}
-                                </button>
-                            )}
                         </div>
                     </div>
 
                     {/* Daily Carousel (Bottom) */}
-                    <div className="mt-auto pb-4 pl-4 overflow-x-auto snap-x flex gap-3 no-scrollbar">
+                    <div className="shrink-0 mt-auto py-2 px-2 overflow-x-auto snap-x flex gap-2 no-scrollbar items-center">
                         {visibleDays.map((d, i) => (
-                            <div key={i} className="snap-center min-w-[90px]">
+                            <div key={i} className="snap-center min-w-[55px]">
                                 <DayTile day={d} onClick={() => setSelectedDay(d)} isSelected={selectedDay && d.time.split('T')[0] === selectedDay.time.split('T')[0]} />
                             </div>
                         ))}
@@ -429,18 +448,26 @@ const WeatherDashboard = () => {
                 </div>
 
                 {/* Mobile Page 2: Analytics */}
-                <div className={clsx("flex-1 p-4 flex flex-col gap-6 overflow-y-auto animate-in fade-in slide-in-from-right-4", mobilePage === 1 ? "flex" : "hidden")}>
-                    <h2 className="text-2xl font-bold text-white mb-2">Analysis</h2>
-                    <div className="bg-white/5 rounded-2xl p-2 border border-white/10">
-                        {loading ? <div className="text-center p-8 text-slate-500">Loading...</div> : <WeatherChart data={data} modelStats={modelStats} />}
+                {mobilePage === 1 && (
+                    <div className="flex-1 p-3 pb-14 flex flex-col gap-3 overflow-y-auto">
+                        <h2 className="text-lg font-bold text-white shrink-0">Analysis</h2>
+                        <div className="bg-white/5 rounded-xl p-2 border border-white/10 h-[180px] w-full shrink-0">
+                            {loading || !data || data.length === 0 ? (
+                                <div className="text-center p-4 text-slate-500 flex items-center justify-center h-full">Loading Chart...</div>
+                            ) : (
+                                <WeatherChart data={data} modelStats={modelStats} />
+                            )}
+                        </div>
+                        <div className="shrink-0">
+                            {modelStats && <ModelInsights stats={modelStats} />}
+                        </div>
                     </div>
-                    {modelStats && <ModelInsights stats={modelStats} />}
-                </div>
+                )}
 
                 {/* Bottom Pagination Dots */}
-                <div className="fixed bottom-0 left-0 right-0 p-4 pb-6 flex justify-center gap-3 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent z-50">
-                    <button onClick={() => setMobilePage(0)} className={clsx("w-3 h-3 rounded-full transition-all", mobilePage === 0 ? "bg-indigo-400 w-6" : "bg-white/20")} />
-                    <button onClick={() => setMobilePage(1)} className={clsx("w-3 h-3 rounded-full transition-all", mobilePage === 1 ? "bg-indigo-400 w-6" : "bg-white/20")} />
+                <div className="absolute bottom-0 left-0 right-0 p-3 flex justify-center gap-2 z-50 bg-gradient-to-t from-slate-900 via-slate-900 to-transparent">
+                    <button onClick={() => setMobilePage(0)} className={clsx("h-1.5 rounded-full transition-all duration-300", mobilePage === 0 ? "bg-indigo-400 w-8" : "bg-white/20 w-1.5")} />
+                    <button onClick={() => setMobilePage(1)} className={clsx("h-1.5 rounded-full transition-all duration-300", mobilePage === 1 ? "bg-indigo-400 w-8" : "bg-white/20 w-1.5")} />
                 </div>
             </div>
 

@@ -23,10 +23,26 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background-color: #0f172a;
 }
 
 #root {
   width: 100%;
+}
+
+/* Mobile: Lock scroll to prevent overflow */
+@media (max-width: 1023px) {
+
+  html,
+  body {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100dvh;
+    overflow: hidden;
+  }
 }

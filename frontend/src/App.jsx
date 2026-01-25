@@ -3,16 +3,17 @@ import WeatherDashboard from './components/WeatherDashboard';
 
 function App() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 p-4 md:p-8 overflow-x-hidden relative selection:bg-purple-500/30">
-      {/* Background Gradients */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    <div className="min-h-screen lg:min-h-0 bg-slate-950 text-slate-50 p-0 lg:p-4 md:p-8 overflow-x-hidden relative selection:bg-purple-500/30">
+      {/* Background Gradients - hidden on mobile for performance */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none hidden lg:block">
         <div className="absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] bg-indigo-500/10 rounded-full blur-[100px] animate-pulse" />
         <div className="absolute top-[20%] -right-[10%] w-[60vw] h-[60vw] bg-purple-500/10 rounded-full blur-[100px]" />
         <div className="absolute -bottom-[20%] left-[20%] w-[50vw] h-[50vw] bg-cyan-500/10 rounded-full blur-[100px]" />
       </div>
 
-      <div className="relative z-10 w-full px-4 md:px-8 space-y-8">
-        <header className="flex items-center justify-between border-b border-white/5 pb-4">
+      <div className="relative z-10 w-full px-0 lg:px-4 md:px-8 space-y-0 lg:space-y-8">
+        {/* Header - hidden on mobile */}
+        <header className="hidden lg:flex items-center justify-between border-b border-white/5 pb-4">
           <h1 className="text-4xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">
             Nostradamus.AI
           </h1>
@@ -21,7 +22,7 @@ function App() {
           </div>
         </header>
 
-        <main>
+        <main className="h-full">
           <WeatherDashboard />
         </main>
       </div>

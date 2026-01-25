@@ -15,25 +15,38 @@ L.Icon.Default.mergeOptions({
 const LocationMarker = ({ position, onLocationSelect }) => {
     const map = useMap();
 
+    // Destructure lat and lon
+    const lat = position ? position[0] : undefined;
+    const lon = position ? position[1] : undefined;
+
+    // Use Number.isFinite for stricter validation (catches NaN, Infinity, undefined)
+    const isValid = Number.isFinite(lat) && Number.isFinite(lon);
+
     useEffect(() => {
-        map.flyTo(position, 10, {
-            duration: 1.5
-        });
-    }, [position, map]);
+        if (isValid && map) {
+            try {
+                map.flyTo(position, 10, { duration: 1.5 });
+            } catch (e) {
+                console.warn("Map flyTo failed:", e);
+            }
+        }
+    }, [isValid, map, position, lat, lon]);
 
     useMapEvents({
         click(e) {
-            onLocationSelect({
-                lat: e.latlng.lat,
-                lon: e.latlng.lng,
-                name: "Selected Location"
-            });
+            if (onLocationSelect) {
+                onLocationSelect({
+                    lat: e.latlng.lat,
+                    lon: e.latlng.lng,
+                    name: "Selected Location"
+                });
+            }
         },
     });
 
-    return position === null ? null : (
-        <Marker position={position}></Marker>
-    );
+    if (!isValid) return null;
+
+    return <Marker position={position} />;
 };
 
 const LocateControl = ({ onLocationFound }) => {
@@ -80,7 +93,20 @@ const LocateControl = ({ onLocationFound }) => {
 };
 
 const WeatherMap = ({ lat, lon, onLocationSelect }) => {
-    const position = [lat, lon];
+    // Use Number.isFinite for bulletproof validation
+    const isValid = Number.isFinite(lat) && Number.isFinite(lon);
+    const position = isValid ? [lat, lon] : [52.2297, 21.0122];
+
+    if (!isValid) {
+        return (
+            <div className="h-[300px] w-full rounded-3xl overflow-hidden border border-white/10 shadow-lg relative z-0 bg-white/5 flex items-center justify-center">
+                <div className="flex flex-col items-center text-slate-500 animate-pulse">
+                    <LocateFixed size={40} className="mb-2 opacity-50" />
+                    <span className="text-xs font-mono uppercase tracking-widest">Map Loading...</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-[300px] w-full rounded-3xl overflow-hidden border border-white/10 shadow-lg relative z-0">
