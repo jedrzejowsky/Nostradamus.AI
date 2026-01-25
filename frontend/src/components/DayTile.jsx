@@ -22,30 +22,30 @@ const DayTile = ({ day, onClick, isSelected }) => {
         <button
             onClick={onClick}
             className={clsx(
-                "flex flex-col items-center justify-center p-4 rounded-2xl transition-all duration-300 min-w-[90px]",
+                "flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 min-w-[60px]",
                 isSelected
                     ? "bg-white/10 border-white/20 shadow-lg scale-105"
                     : "bg-transparent border-transparent hover:bg-white/5"
             )}
         >
-            <div className="flex flex-col items-center mb-2">
-                <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">
+            <div className="flex flex-col items-center mb-1">
+                <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">
                     {format(date, 'EEE')}
                 </span>
-                <span className="text-slate-600 font-medium text-[10px] mt-0.5">
+                <span className="text-slate-600 font-medium text-[8px] mt-0.5">
                     {format(date, 'd MMM')}
                 </span>
             </div>
 
-            <div className="mb-3 transform scale-125">
+            <div className="mb-1 transform scale-90">
                 {getWeatherIcon(day.weather_code)}
             </div>
 
             <div className="flex flex-col items-center">
-                <span className={clsx("font-bold text-xl", isSelected ? "text-white" : "text-slate-200")}>
+                <span className={clsx("font-bold text-base", isSelected ? "text-white" : "text-slate-200")}>
                     {Math.round(day.temperature_2m_max)}°
                 </span>
-                <span className="text-xs text-slate-500 font-medium mt-1">
+                <span className="text-[10px] text-slate-500 font-medium">
                     {Math.round(day.temperature_2m_min)}°
                 </span>
             </div>

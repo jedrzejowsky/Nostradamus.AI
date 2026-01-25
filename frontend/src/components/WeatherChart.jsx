@@ -49,14 +49,14 @@ const WeatherChart = ({ data, modelStats }) => {
     const config = getMetricConfig();
 
     return (
-        <div className="h-full min-h-[400px] w-full bg-white/5 rounded-3xl p-6 border border-white/10 backdrop-blur-md shadow-2xl flex flex-col">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <div className="h-full w-full bg-white/5 rounded-xl lg:rounded-3xl p-2 lg:p-6 border border-white/10 backdrop-blur-md shadow-2xl flex flex-col">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-2 lg:mb-6 gap-2 lg:gap-4">
                 <div className="flex flex-col">
-                    <h3 className="text-xl font-bold text-slate-200">
+                    <h3 className="text-sm lg:text-xl font-bold text-slate-200">
                         {config.label} Analysis
                     </h3>
                     {metric === 'temp' && modelStats && (
-                        <div className="text-xs text-emerald-400 font-mono flex gap-3 mt-1 animate-pulse">
+                        <div className="text-[10px] lg:text-xs text-emerald-400 font-mono flex gap-2 lg:gap-3 mt-0.5">
                             <span>Accuracy (R²): {(modelStats.r2 * 100).toFixed(1)}%</span>
                             <span>Error (MAE): {modelStats.mae?.toFixed(1)}°</span>
                         </div>
@@ -64,52 +64,54 @@ const WeatherChart = ({ data, modelStats }) => {
                 </div>
 
                 {/* Metric Toggles */}
-                <div className="flex bg-white/5 p-1 rounded-xl">
+                <div className="flex bg-white/5 p-0.5 lg:p-1 rounded-lg lg:rounded-xl">
                     <button
                         onClick={() => setMetric('temp')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${metric === 'temp' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-2 lg:px-4 py-1 lg:py-1.5 rounded-md lg:rounded-lg text-xs lg:text-sm font-medium transition-all ${metric === 'temp' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                     >
                         Temp
                     </button>
                     <button
                         onClick={() => setMetric('wind')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${metric === 'wind' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-2 lg:px-4 py-1 lg:py-1.5 rounded-md lg:rounded-lg text-xs lg:text-sm font-medium transition-all ${metric === 'wind' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                     >
                         Wind
                     </button>
                     <button
                         onClick={() => setMetric('humidity')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${metric === 'humidity' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-2 lg:px-4 py-1 lg:py-1.5 rounded-md lg:rounded-lg text-xs lg:text-sm font-medium transition-all ${metric === 'humidity' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                     >
                         Humidity
                     </button>
                 </div>
 
                 {/* Series Visibility Toggles */}
-                <div className="flex gap-4 text-sm select-none">
+                <div className="flex gap-2 lg:gap-4 text-xs lg:text-sm select-none">
                     <button
                         onClick={() => setShowUnified(!showUnified)}
-                        className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${showUnified ? 'bg-white/10 border-white/20 text-slate-200' : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500'}`}
+                        className={`flex items-center gap-1 lg:gap-2 px-2 lg:px-3 py-0.5 lg:py-1 rounded-full border transition-all ${showUnified ? 'bg-white/10 border-white/20 text-slate-200' : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500'}`}
                     >
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }}></div>
-                        Real & Forecast
-                        {showUnified ? <Eye size={14} /> : <EyeOff size={14} />}
+                        <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full" style={{ backgroundColor: config.color }}></div>
+                        <span className="hidden lg:inline">Real & Forecast</span>
+                        <span className="lg:hidden">Real</span>
+                        {showUnified ? <Eye size={12} /> : <EyeOff size={12} />}
                     </button>
 
                     {config.showAI && (
                         <button
                             onClick={() => setShowAI(!showAI)}
-                            className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${showAI ? 'bg-purple-500/10 border-purple-500/50 text-purple-200' : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500'}`}
+                            className={`flex items-center gap-1 lg:gap-2 px-2 lg:px-3 py-0.5 lg:py-1 rounded-full border transition-all ${showAI ? 'bg-purple-500/10 border-purple-500/50 text-purple-200' : 'bg-transparent border-slate-700 text-slate-500 hover:border-slate-500'}`}
                         >
-                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                            AI Model
-                            {showAI ? <Eye size={14} /> : <EyeOff size={14} />}
+                            <div className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-purple-500"></div>
+                            <span className="hidden lg:inline">AI Model</span>
+                            <span className="lg:hidden">AI</span>
+                            {showAI ? <Eye size={12} /> : <EyeOff size={12} />}
                         </button>
                     )}
                 </div>
             </div>
 
-            <div className="w-full h-[400px]">
+            <div className="w-full flex-1 min-h-[100px] lg:h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                         <defs>
