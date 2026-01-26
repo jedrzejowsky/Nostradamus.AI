@@ -7,9 +7,10 @@ import ModelInsights from './ModelInsights';
 import { Thermometer, BrainCircuit, Activity, RefreshCw, MapPin, Droplets, Wind, Cloud, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, subDays, addDays, isSameDay, startOfDay } from 'date-fns';
 import { clsx } from 'clsx';
+import { getForecastData, getHistoricalData } from '../services/openMeteoClient';
 
-// Update base URL if needed or use relative proxy
-const API_BASE = 'http://localhost:8000/api/weather';
+// Backend API - only used for ML predictions
+const PREDICT_API = 'http://localhost:8000/api/weather/predict';
 
 const WeatherDashboard = () => {
     const [data, setData] = useState([]); // Hourly data for chart
@@ -38,25 +39,23 @@ const WeatherDashboard = () => {
         setModelStats(null);
         setHistoryComparison({ yearAgo: null, decadeAgo: null });
         try {
-            // Fetch 7 days history + 7 days forecast
+           frontend-layout-ui
+            // Fetch data directly from OpenMeteo API
             const now = new Date();
             const startDate = format(subDays(now, 7), 'yyyy-MM-dd');
             const endDate = format(subDays(now, 1), 'yyyy-MM-dd');
-
-            const histRes = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${startDate}&end_date=${endDate}`);
-            if (!histRes.ok) throw new Error("Failed to fetch history");
-            const histPayload = await histRes.json();
-
-            const foreRes = await fetch(`${API_BASE}/forecast?lat=${location.lat}&lon=${location.lon}&days=7`);
-            if (!foreRes.ok) throw new Error("Failed to fetch forecast");
-            const forePayload = await foreRes.json();
+            // Call OpenMeteo directly (no backend needed!)
+            const [histData, foreData] = await Promise.all([
+                getHistoricalData(location.lat, location.lon, startDate, endDate),
+                getForecastData(location.lat, location.lon, 7)
+            ]);
 
             // Merge & Set Data
-            const mergedHourly = mergeHourlyData(histPayload.hourly, forePayload.hourly, []);
+            const mergedHourly = mergeHourlyData(histData.hourly, foreData.hourly, []);
             setData(mergedHourly);
-
             // Daily Data Processing
-            const rawDaily = [...(histPayload.daily || []), ...(forePayload.daily || [])];
+            const rawDaily = [...(histData.daily || []), ...(foreData.daily || [])];
+
             const dailyMap = new Map();
             rawDaily.forEach(d => {
                 const t = d.time.split('T')[0];
@@ -109,7 +108,8 @@ const WeatherDashboard = () => {
         setPredicting(true);
         setModelStats(null);
         try {
-            const res = await fetch(`${API_BASE}/predict?lat=${location.lat}&lon=${location.lon}&days=7`);
+            // Only this endpoint uses our backend (for ML)
+            const res = await fetch(`${PREDICT_API}?lat=${location.lat}&lon=${location.lon}&days=7`);
             const payload = await res.json();
 
             if (payload.prediction) {
