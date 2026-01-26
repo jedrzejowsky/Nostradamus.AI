@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin } from 'lucide-react';
 import { clsx } from 'clsx';
+import { searchLocation } from '../services/openMeteoClient';
 
 const LocationSearch = ({ onLocationSelect }) => {
     const [query, setQuery] = useState('');
@@ -13,19 +14,18 @@ const LocationSearch = ({ onLocationSelect }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
             if (query.length > 2 && query !== selectedName) {
-                searchLocations();
+                handleSearch();
             }
         }, 500);
 
         return () => clearTimeout(timer);
     }, [query, selectedName]);
 
-    const searchLocations = async () => {
+    const handleSearch = async () => {
         setLoading(true);
         try {
-            // Use local backend which proxies to open-meteo
-            const res = await fetch(`http://localhost:8000/api/location/search?name=${query}`);
-            const data = await res.json();
+            // Call OpenMeteo Geocoding API directly (no backend needed!)
+            const data = await searchLocation(query);
             setResults(data || []);
             setDropdownOpen(true);
         } catch (e) {
@@ -56,14 +56,14 @@ const LocationSearch = ({ onLocationSelect }) => {
 
             {dropdownOpen && results.length > 0 && query !== selectedName && (
                 <div className="absolute top-full mt-2 w-full bg-slate-900/95 border border-white/10 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden max-h-60 overflow-y-auto">
-                    {results.map((loc) => (
+                    {results.map((loc, idx) => (
                         <button
-                            key={loc.id}
+                            key={`${loc.name}-${loc.lat}-${idx}`}
                             onClick={() => {
                                 onLocationSelect({
                                     name: loc.name,
-                                    lat: loc.latitude,
-                                    lon: loc.longitude,
+                                    lat: loc.lat,
+                                    lon: loc.lon,
                                     country: loc.country
                                 });
                                 setQuery(loc.name);
