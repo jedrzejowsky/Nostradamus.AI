@@ -39,11 +39,11 @@ const WeatherDashboard = () => {
         setModelStats(null);
         setHistoryComparison({ yearAgo: null, decadeAgo: null });
         try {
-           frontend-layout-ui
             // Fetch data directly from OpenMeteo API
             const now = new Date();
             const startDate = format(subDays(now, 7), 'yyyy-MM-dd');
             const endDate = format(subDays(now, 1), 'yyyy-MM-dd');
+
             // Call OpenMeteo directly (no backend needed!)
             const [histData, foreData] = await Promise.all([
                 getHistoricalData(location.lat, location.lon, startDate, endDate),
@@ -53,9 +53,9 @@ const WeatherDashboard = () => {
             // Merge & Set Data
             const mergedHourly = mergeHourlyData(histData.hourly, foreData.hourly, []);
             setData(mergedHourly);
+
             // Daily Data Processing
             const rawDaily = [...(histData.daily || []), ...(foreData.daily || [])];
-
             const dailyMap = new Map();
             rawDaily.forEach(d => {
                 const t = d.time.split('T')[0];
@@ -69,32 +69,20 @@ const WeatherDashboard = () => {
             const todayData = sortedDaily.find(d => isSameDay(new Date(d.time), now));
             if (todayData) setSelectedDay(todayData);
 
-            // Fetch Historical Comparisons (Async, don't block main UI excessively, but here we await)
-            // 1 Year Ago
+            // Fetch Historical Comparisons (1 Year Ago) - directly from OpenMeteo
             const date1y = subDays(now, 365);
-            const date10y = subDays(now, 365 * 10);
+            const dStr1y = format(date1y, 'yyyy-MM-dd');
 
-            const fetchPointHistory = async (date) => {
-                const dStr = format(date, 'yyyy-MM-dd');
-                try {
-                    const res = await fetch(`${API_BASE}/history?lat=${location.lat}&lon=${location.lon}&start_date=${dStr}&end_date=${dStr}`);
-                    const json = await res.json();
-                    if (json.hourly && json.hourly.length > 0) {
-                        // Find same hour
-                        const hour = now.getHours();
-                        const record = json.hourly.find(r => new Date(r.time).getHours() === hour);
-                        return record ? record.temperature_2m : null;
-                    }
-                } catch (e) { console.error(e); }
-                return null;
-            };
-
-            const [temp1y, temp10y] = await Promise.all([
-                fetchPointHistory(date1y),
-                fetchPointHistory(date10y)
-            ]);
-
-            setHistoryComparison({ yearAgo: temp1y, decadeAgo: temp10y });
+            try {
+                const hist1y = await getHistoricalData(location.lat, location.lon, dStr1y, dStr1y);
+                if (hist1y.hourly && hist1y.hourly.length > 0) {
+                    const hour = now.getHours();
+                    const record = hist1y.hourly.find(r => new Date(r.time).getHours() === hour);
+                    setHistoryComparison({ yearAgo: record?.temperature_2m ?? null, decadeAgo: null });
+                }
+            } catch (e) {
+                console.warn('Could not fetch 1 year ago data:', e);
+            }
 
         } catch (err) {
             console.error(err);
