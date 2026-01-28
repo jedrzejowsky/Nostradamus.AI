@@ -33,7 +33,6 @@ The project is structured as a monorepo with `backend` and `frontend` directorie
 
 ### 1. Backend Setup
 
-```bash
 cd backend
 
 # Create virtual environment
